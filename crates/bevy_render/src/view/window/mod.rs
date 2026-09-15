@@ -411,7 +411,7 @@ pub fn create_surfaces(
                 }
             }
 
-            let texture_view_format = if !format.is_srgb() {
+            let texture_view_format = if !format.has_srgb_suffix() {
                 Some(format.add_srgb_suffix())
             } else {
                 None

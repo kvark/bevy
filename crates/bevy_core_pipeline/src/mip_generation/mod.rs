@@ -906,6 +906,7 @@ fn get_mip_storage_view(
             base_array_layer: 0,
             array_layer_count: Some(1),
             usage: Some(TextureUsages::STORAGE_BINDING),
+            swizzle: Default::default(),
         });
     }
 

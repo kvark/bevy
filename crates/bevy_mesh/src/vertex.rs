@@ -460,6 +460,7 @@ impl VertexAttributeValues {
             VertexFormat::Float64x4 => VertexAttributeValues::Float64x4(Vec::new()),
             VertexFormat::Unorm8x4Bgra => VertexAttributeValues::Unorm8x4Bgra(Vec::new()),
             VertexFormat::Unorm10_10_10_2 => VertexAttributeValues::Unorm10_10_10_2(Vec::new()),
+            VertexFormat::Snorm10_10_10_2 => VertexAttributeValues::Unorm10_10_10_2(Vec::new()),
         }
     }
 

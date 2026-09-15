@@ -229,7 +229,9 @@ pub async fn initialize_renderer(
         },
     };
 
-    #[cfg(not(feature = "raw_vulkan_init"))]
+    #[cfg(all(not(feature = "raw_vulkan_init"), feature = "blade"))]
+    let instance = blade_wgpu::BladeInstance::create_with(&instance_descriptor, true).into_wgpu();
+    #[cfg(all(not(feature = "raw_vulkan_init"), not(feature = "blade")))]
     let instance = Instance::new(instance_descriptor);
     #[cfg(feature = "raw_vulkan_init")]
     let mut additional_vulkan_features = raw_vulkan_init::AdditionalVulkanFeatures::default();
@@ -353,6 +355,7 @@ pub async fn initialize_renderer(
         label: options.device_label.as_ref().map(AsRef::as_ref),
         required_features: features,
         required_limits: limits,
+        default_queue: Default::default(),
         // SAFETY: TODO, see https://github.com/bevyengine/bevy/issues/22082
         experimental_features: unsafe { wgpu::ExperimentalFeatures::enabled() },
         memory_hints: options.memory_hints.clone(),

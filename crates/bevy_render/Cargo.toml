@@ -24,6 +24,7 @@ statically-linked-dxc = ["wgpu/static-dxc"]
 
 # Forces the wgpu instance to be initialized using the raw Vulkan HAL, enabling additional configuration
 raw_vulkan_init = ["wgpu/vulkan"]
+blade = ["dep:blade-wgpu", "wgpu/custom"]
 
 trace = ["profiling"]
 tracing-tracy = ["dep:tracy-client"]
@@ -94,6 +95,8 @@ wgpu = { version = "30", default-features = false, features = [
   "vulkan",
   "fragile-send-sync-non-atomic-wasm",
 ] }
+# Study-only: Blade as a wgpu custom backend. Enable with `--features blade`.
+blade-wgpu = { path = "../../../blade/blade-wgpu", optional = true }
 wgpu-types = { version = "30", default-features = false }
 bytemuck = { version = "1.5", features = ["derive", "must_cast"] }
 downcast-rs = { version = "2", default-features = false, features = ["std"] }

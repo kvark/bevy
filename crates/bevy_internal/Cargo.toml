@@ -73,6 +73,9 @@ statically-linked-dxc = ["bevy_render/statically-linked-dxc"]
 # Forces the wgpu instance to be initialized using the raw Vulkan HAL, enabling additional configuration
 raw_vulkan_init = ["bevy_render/raw_vulkan_init"]
 
+# Study-only: Blade as a wgpu custom backend.
+blade = ["bevy_render?/blade"]
+
 # Pre-populate buffer labels with buffer types for debugging.
 type_label_buffers = ["bevy_render/type_label_buffers"]
 

@@ -820,6 +820,7 @@ fn create_storage_view(texture: &Texture, mip: u32, _render_device: &RenderDevic
         base_array_layer: 0,
         array_layer_count: Some(texture.depth_or_array_layers()),
         usage: Some(TextureUsages::STORAGE_BINDING),
+        swizzle: Default::default(),
     })
 }
 

@@ -328,6 +328,9 @@ bevy_picking = ["bevy_internal/bevy_picking"]
 # Provides rendering functionality
 bevy_render = ["bevy_internal/bevy_render"]
 
+# Study-only: run Bevy on blade-graphics via wgpu's custom backend.
+blade = ["bevy_internal/blade"]
+
 # Provides ECS serialization functionality
 bevy_world_serialization = ["bevy_internal/bevy_world_serialization"]
 
@@ -2040,6 +2043,17 @@ doc-scrape-examples = true
 [package.metadata.example.headless_renderer]
 name = "Headless Renderer"
 description = "An application that runs with no window, but renders into image file"
+category = "Application"
+wasm = false
+
+[[example]]
+name = "sync_bench"
+path = "examples/app/sync_bench.rs"
+doc-scrape-examples = false
+
+[package.metadata.example.sync_bench]
+name = "Sync Bench"
+description = "Headless Blade/wgpu-core barrier-host protocol cell"
 category = "Application"
 wasm = false
 
@@ -5769,3 +5783,11 @@ name = "GPU Component Array Buffer"
 description = "Shows how to expose per-mesh-instance data to the GPU"
 category = "Shaders"
 wasm = true
+
+[patch.crates-io]
+wgpu = { path = "../wgpu/wgpu" }
+wgpu-core = { path = "../wgpu/wgpu-core" }
+wgpu-hal = { path = "../wgpu/wgpu-hal" }
+wgpu-types = { path = "../wgpu/wgpu-types" }
+naga = { path = "../wgpu/naga" }
+naga-types = { path = "../wgpu/naga-types" }

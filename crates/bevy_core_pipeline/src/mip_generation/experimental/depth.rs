@@ -532,6 +532,7 @@ pub fn create_depth_pyramid_dummy_texture(
             mip_level_count: Some(1),
             base_array_layer: 0,
             array_layer_count: Some(1),
+            swizzle: Default::default(),
         })
 }
 
@@ -601,6 +602,7 @@ impl ViewDepthPyramid {
                     mip_level_count: Some(1),
                     base_array_layer: 0,
                     array_layer_count: Some(1),
+                    swizzle: Default::default(),
                 })
             } else {
                 (*depth_pyramid_dummy_texture).clone()

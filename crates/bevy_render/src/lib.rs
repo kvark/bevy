@@ -95,6 +95,9 @@ pub mod texture;
 pub mod uniform;
 pub mod view;
 
+/// Host record/submit counters at the wgpu dispatch boundary (Blade and wgpu-core).
+pub use wgpu::util::dispatch_stats;
+
 /// The render prelude.
 ///
 /// This includes the most common types in this crate, re-exported for your convenience.

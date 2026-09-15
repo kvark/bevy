@@ -25,6 +25,7 @@ use bevy::{
             PollType, TexelCopyBufferInfo, TexelCopyBufferLayout, TextureFormat, TextureUsages,
         },
         renderer::{RenderContext, RenderDevice, RenderGraph, RenderGraphSystems, RenderQueue},
+        view::Msaa,
         Extract, Render, RenderApp, RenderSystems,
     },
     window::ExitCondition,
@@ -81,7 +82,7 @@ fn main() {
             config.height,
             config.single_image,
         ))
-        .insert_resource(ClearColor(Color::srgb_u8(0, 0, 0)))
+        .insert_resource(ClearColor(Color::srgb_u8(40, 40, 80)))
         .add_plugins(
             DefaultPlugins
                 .set(ImagePlugin::default_nearest())
@@ -103,8 +104,9 @@ fn main() {
         // ScheduleRunnerPlugin provides an alternative to the default bevy_winit app runner, which
         // manages the loop without creating a window.
         .add_plugins(ScheduleRunnerPlugin::run_loop(
-            // Run 60 times per second.
-            Duration::from_secs_f64(1.0 / 60.0),
+            // Pump frames as fast as the GPU allows so pipeline warmup finishes
+            // before the bounded capture.
+            Duration::ZERO,
         ))
         .init_resource::<SceneController>()
         .add_systems(Startup, setup)
@@ -165,7 +167,7 @@ fn setup(
         // 2. Few black box images
         // 3. Fully rendered scene images
         // Exact number depends on device speed, device load and scene size
-        40,
+        120,
         "main_scene".into(),
     );
 
@@ -185,7 +187,8 @@ fn setup(
     // light
     commands.spawn((
         PointLight {
-            shadow_maps_enabled: true,
+            // Shadow maps need extra views; keep the capture path on the main camera.
+            shadow_maps_enabled: false,
             ..default()
         },
         Transform::from_xyz(4.0, 8.0, 4.0),
@@ -195,6 +198,7 @@ fn setup(
         Camera3d::default(),
         render_target,
         Tonemapping::Linear,
+        Msaa::Off,
         Transform::from_xyz(-2.5, 4.5, 9.0).looking_at(Vec3::ZERO, Vec3::Y),
     ));
 }

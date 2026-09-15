@@ -1527,6 +1527,7 @@ pub fn prepare_lights(
                 mip_level_count: None,
                 base_array_layer: 0,
                 array_layer_count: None,
+                swizzle: Default::default(),
             });
 
     let directional_light_depth_texture = texture_cache.get(
@@ -1571,6 +1572,7 @@ pub fn prepare_lights(
                 mip_level_count: None,
                 base_array_layer: 0,
                 array_layer_count: None,
+                swizzle: Default::default(),
             });
 
     let mut live_views = EntityHashSet::with_capacity(views_count);
@@ -1967,6 +1969,7 @@ pub fn prepare_lights(
                             mip_level_count: None,
                             base_array_layer: directional_depth_texture_array_index,
                             array_layer_count: Some(1u32),
+                            swizzle: Default::default(),
                         });
 
                 // NOTE: For point and spotlights, we reuse the same depth attachment for all views.
@@ -2189,6 +2192,7 @@ fn create_point_shadow_maps(
                             mip_level_count: None,
                             base_array_layer,
                             array_layer_count: Some(1u32),
+                            swizzle: Default::default(),
                         });
 
                 DepthStencilViewAttachment::new(
@@ -2291,6 +2295,7 @@ fn create_spot_shadow_map(
                         mip_level_count: None,
                         base_array_layer,
                         array_layer_count: Some(1u32),
+                        swizzle: Default::default(),
                     });
 
             DepthStencilViewAttachment::new(
