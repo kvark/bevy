@@ -1,23 +1,24 @@
-//! Headless Bevy cell for the Blade / wgpu-core barrier-host protocol.
+//! Headless Bevy cells for the Blade / wgpu-core barrier-host protocol.
 //!
-//! Same cube+ground scene as `headless_renderer`, with pass multipliers turned
-//! on: point-light shadows, GPU mesh preprocessing (engine default), a depth
-//! and normal prepass, and SSAO compute. MSAA stays off. Emits
-//! `# schema,blade-sync-bench-v1` on stdout. Host record/submit is timed at
-//! the wgpu dispatch boundary (`CommandEncoder::finish` / `Queue::submit`);
-//! GPU elapsed is wait-to-idle.
+//! Several procedural scenes, selected with `--workload`, each stressing a
+//! different pass graph (forward+SSAO, multi-light shadows, deferred, bloom,
+//! clustered SSAO). MSAA stays off. GPU mesh preprocessing is the engine
+//! default. Emits `# schema,blade-sync-bench-v1` on stdout.
 
 #![allow(clippy::print_stdout, clippy::print_stderr)]
 
 use bevy::{
     app::{AppExit, ScheduleRunnerPlugin},
-    camera::RenderTarget,
+    camera::{Hdr, RenderTarget},
+    color::palettes::css,
     core_pipeline::{
         prepass::{DepthPrepass, NormalPrepass},
         tonemapping::Tonemapping,
     },
     image::TextureFormatPixelInfo,
+    light::CascadeShadowConfigBuilder,
     pbr::{ScreenSpaceAmbientOcclusion, ScreenSpaceAmbientOcclusionQualityLevel},
+    post_process::bloom::Bloom,
     prelude::*,
     render::{
         dispatch_stats,
@@ -46,7 +47,13 @@ use std::{
     time::Duration,
 };
 
-const WORKLOAD: &str = "bevy-headless";
+const WORKLOADS: &[&str] = &[
+    "bevy-headless",
+    "bevy-lighting",
+    "bevy-shapes",
+    "bevy-bloom",
+    "bevy-ssao",
+];
 const CLEAR_SRGB: [u8; 4] = [40, 40, 80, 255];
 
 fn implementation() -> &'static str {
@@ -93,7 +100,7 @@ struct Config {
 impl Config {
     fn parse() -> Result<Self, String> {
         let mut cfg = Self {
-            workload: WORKLOAD.into(),
+            workload: "bevy-headless".into(),
             policy: default_policy(),
             passes: 1,
             elements: 1,
@@ -145,18 +152,20 @@ impl Config {
                 }
                 "--help" | "-h" => {
                     eprintln!(
-                        "Bevy headless sync-bench cell. Accepts the synthetic collector flags\n\
-                         (--workload --policy --passes --width --height --warmups --samples ...)."
+                        "Bevy headless sync-bench. Workloads: {}\n\
+                         Accepts the synthetic collector flags (--policy --passes --width ...).",
+                        WORKLOADS.join(", ")
                     );
                     process::exit(0);
                 }
                 other => return Err(format!("unknown argument: {other}")),
             }
         }
-        if cfg.workload != WORKLOAD {
+        if !WORKLOADS.contains(&cfg.workload.as_str()) {
             return Err(format!(
-                "unsupported workload {}; only {WORKLOAD} is collected",
-                cfg.workload
+                "unsupported workload {}; expected one of {}",
+                cfg.workload,
+                WORKLOADS.join(", ")
             ));
         }
         if cfg.width == 0 || cfg.height == 0 || cfg.samples == 0 {
@@ -235,9 +244,17 @@ fn main() {
         sample_index: 0,
     };
 
-    App::new()
-        .insert_resource(ClearColor(Color::srgb_u8(CLEAR_SRGB[0], CLEAR_SRGB[1], CLEAR_SRGB[2])))
-        .insert_resource(bench.clone())
+    let mut app = App::new();
+    if bench.workload == "bevy-bloom" {
+        app.insert_resource(ClearColor(Color::BLACK));
+    } else {
+        app.insert_resource(ClearColor(Color::srgb_u8(
+            CLEAR_SRGB[0],
+            CLEAR_SRGB[1],
+            CLEAR_SRGB[2],
+        )));
+    }
+    app.insert_resource(bench.clone())
         .insert_resource(state)
         .insert_resource(last_pass.clone())
         .add_plugins(
@@ -272,7 +289,21 @@ fn setup(
         bench.width,
         bench.height,
     );
+    match bench.workload.as_str() {
+        "bevy-lighting" => scene_lighting(&mut commands, &mut meshes, &mut materials, render_target),
+        "bevy-shapes" => scene_shapes(&mut commands, &mut meshes, &mut materials, render_target),
+        "bevy-bloom" => scene_bloom(&mut commands, &mut meshes, &mut materials, render_target),
+        "bevy-ssao" => scene_ssao(&mut commands, &mut meshes, &mut materials, render_target),
+        _ => scene_pbr_ssao(&mut commands, &mut meshes, &mut materials, render_target),
+    }
+}
 
+fn scene_pbr_ssao(
+    commands: &mut Commands,
+    meshes: &mut Assets<Mesh>,
+    materials: &mut Assets<StandardMaterial>,
+    render_target: RenderTarget,
+) {
     commands.spawn((
         Mesh3d(meshes.add(Circle::new(4.0))),
         MeshMaterial3d(materials.add(Color::WHITE)),
@@ -302,6 +333,273 @@ fn setup(
             ..default()
         },
         Transform::from_xyz(-2.5, 4.5, 9.0).looking_at(Vec3::ZERO, Vec3::Y),
+    ));
+}
+
+fn scene_lighting(
+    commands: &mut Commands,
+    meshes: &mut Assets<Mesh>,
+    materials: &mut Assets<StandardMaterial>,
+    render_target: RenderTarget,
+) {
+    commands.spawn((
+        Mesh3d(meshes.add(Plane3d::default().mesh().size(10.0, 10.0))),
+        MeshMaterial3d(materials.add(StandardMaterial {
+            base_color: Color::WHITE,
+            perceptual_roughness: 1.0,
+            ..default()
+        })),
+    ));
+    let wall = materials.add(StandardMaterial {
+        base_color: css::INDIGO.into(),
+        perceptual_roughness: 1.0,
+        ..default()
+    });
+    commands.spawn((
+        Mesh3d(meshes.add(Cuboid::new(5.0, 0.15, 5.0))),
+        MeshMaterial3d(wall.clone()),
+        Transform::from_xyz(2.5, 2.5, 0.0)
+            .with_rotation(Quat::from_rotation_z(std::f32::consts::FRAC_PI_2)),
+    ));
+    commands.spawn((
+        Mesh3d(meshes.add(Cuboid::new(5.0, 0.15, 5.0))),
+        MeshMaterial3d(wall),
+        Transform::from_xyz(0.0, 2.5, -2.5)
+            .with_rotation(Quat::from_rotation_x(std::f32::consts::FRAC_PI_2)),
+    ));
+    commands.spawn((
+        Mesh3d(meshes.add(Cuboid::default())),
+        MeshMaterial3d(materials.add(StandardMaterial {
+            base_color: css::DEEP_PINK.into(),
+            ..default()
+        })),
+        Transform::from_xyz(0.0, 0.5, 0.0),
+    ));
+    commands.spawn((
+        Mesh3d(meshes.add(Sphere::new(0.5).mesh().uv(32, 18))),
+        MeshMaterial3d(materials.add(StandardMaterial {
+            base_color: css::LIMEGREEN.into(),
+            ..default()
+        })),
+        Transform::from_xyz(1.5, 1.0, 1.5),
+    ));
+    commands.spawn((
+        PointLight {
+            intensity: 100_000.0,
+            color: css::RED.into(),
+            shadow_maps_enabled: true,
+            ..default()
+        },
+        Transform::from_xyz(1.0, 2.0, 0.0),
+    ));
+    commands.spawn((
+        SpotLight {
+            intensity: 100_000.0,
+            color: css::LIME.into(),
+            shadow_maps_enabled: true,
+            inner_angle: 0.6,
+            outer_angle: 0.8,
+            ..default()
+        },
+        Transform::from_xyz(-1.0, 2.0, 0.0).looking_at(Vec3::new(-1.0, 0.0, 0.0), Vec3::Z),
+    ));
+    commands.spawn((
+        PointLight {
+            intensity: 100_000.0,
+            color: css::BLUE.into(),
+            shadow_maps_enabled: true,
+            ..default()
+        },
+        Transform::from_xyz(0.0, 4.0, 0.0),
+    ));
+    commands.spawn((
+        DirectionalLight {
+            illuminance: light_consts::lux::OVERCAST_DAY,
+            shadow_maps_enabled: true,
+            ..default()
+        },
+        Transform::from_xyz(0.0, 2.0, 0.0)
+            .with_rotation(Quat::from_rotation_x(-std::f32::consts::FRAC_PI_4)),
+        CascadeShadowConfigBuilder {
+            first_cascade_far_bound: 4.0,
+            maximum_distance: 10.0,
+            ..default()
+        }
+        .build(),
+    ));
+    commands.spawn((
+        Camera3d::default(),
+        render_target,
+        Tonemapping::Linear,
+        Msaa::Off,
+        Transform::from_xyz(-2.0, 2.5, 5.0).looking_at(Vec3::ZERO, Vec3::Y),
+    ));
+}
+
+fn scene_shapes(
+    commands: &mut Commands,
+    meshes: &mut Assets<Mesh>,
+    materials: &mut Assets<StandardMaterial>,
+    render_target: RenderTarget,
+) {
+    commands.spawn((
+        Mesh3d(meshes.add(Plane3d::default().mesh().size(20.0, 20.0))),
+        MeshMaterial3d(materials.add(Color::srgb(0.4, 0.4, 0.4))),
+    ));
+    let shapes: [(Handle<Mesh>, Vec3); 6] = [
+        (meshes.add(Cuboid::default()), Vec3::new(-4.0, 0.5, 0.0)),
+        (meshes.add(Sphere::default().mesh().ico(5).unwrap()), Vec3::new(-2.0, 0.5, 0.0)),
+        (meshes.add(Capsule3d::default()), Vec3::new(0.0, 0.5, 0.0)),
+        (meshes.add(Torus::default()), Vec3::new(2.0, 0.5, 0.0)),
+        (meshes.add(Cylinder::default()), Vec3::new(4.0, 0.5, 0.0)),
+        (meshes.add(Cone::default()), Vec3::new(0.0, 0.5, 2.5)),
+    ];
+    let colors = [
+        Color::srgb_u8(124, 144, 255),
+        Color::srgb_u8(255, 144, 124),
+        Color::srgb_u8(144, 255, 124),
+        Color::srgb_u8(255, 220, 80),
+        Color::srgb_u8(180, 80, 255),
+        Color::srgb_u8(80, 220, 255),
+    ];
+    for (i, (mesh, pos)) in shapes.into_iter().enumerate() {
+        commands.spawn((
+            Mesh3d(mesh),
+            MeshMaterial3d(materials.add(colors[i])),
+            Transform::from_translation(pos),
+        ));
+    }
+    commands.spawn((
+        DirectionalLight {
+            illuminance: light_consts::lux::OVERCAST_DAY,
+            shadow_maps_enabled: true,
+            ..default()
+        },
+        Transform::from_rotation(Quat::from_rotation_x(-std::f32::consts::FRAC_PI_4)),
+        CascadeShadowConfigBuilder {
+            num_cascades: 3,
+            maximum_distance: 30.0,
+            ..default()
+        }
+        .build(),
+    ));
+    commands.spawn((
+        Camera3d::default(),
+        render_target,
+        Tonemapping::Linear,
+        Msaa::Off,
+        Transform::from_xyz(0.0, 6.0, 12.0).looking_at(Vec3::ZERO, Vec3::Y),
+    ));
+}
+
+fn scene_bloom(
+    commands: &mut Commands,
+    meshes: &mut Assets<Mesh>,
+    materials: &mut Assets<StandardMaterial>,
+    render_target: RenderTarget,
+) {
+    let mesh = meshes.add(Sphere::new(0.4).mesh().ico(5).unwrap());
+    let emissive = [
+        materials.add(StandardMaterial {
+            emissive: LinearRgba::rgb(0.0, 0.0, 150.0),
+            ..default()
+        }),
+        materials.add(StandardMaterial {
+            emissive: LinearRgba::rgb(1000.0, 1000.0, 1000.0),
+            ..default()
+        }),
+        materials.add(StandardMaterial {
+            emissive: LinearRgba::rgb(50.0, 0.0, 0.0),
+            ..default()
+        }),
+        materials.add(StandardMaterial {
+            base_color: Color::BLACK,
+            ..default()
+        }),
+    ];
+    for x in -3..3 {
+        for z in -3..3 {
+            let idx = ((x + 3) * 3 + (z + 3)) as usize % emissive.len();
+            commands.spawn((
+                Mesh3d(mesh.clone()),
+                MeshMaterial3d(emissive[idx].clone()),
+                Transform::from_xyz(x as f32 * 1.5, 0.0, z as f32 * 1.5),
+            ));
+        }
+    }
+    commands.spawn((
+        Camera3d::default(),
+        render_target,
+        Hdr,
+        Tonemapping::TonyMcMapface,
+        Msaa::Off,
+        Bloom::NATURAL,
+        Transform::from_xyz(-2.0, 2.5, 5.0).looking_at(Vec3::ZERO, Vec3::Y),
+    ));
+}
+
+fn scene_ssao(
+    commands: &mut Commands,
+    meshes: &mut Assets<Mesh>,
+    materials: &mut Assets<StandardMaterial>,
+    render_target: RenderTarget,
+) {
+    let material = materials.add(StandardMaterial {
+        base_color: Color::srgb(0.5, 0.5, 0.5),
+        perceptual_roughness: 1.0,
+        reflectance: 0.0,
+        ..default()
+    });
+    commands.spawn((
+        Mesh3d(meshes.add(Cuboid::default())),
+        MeshMaterial3d(material.clone()),
+        Transform::from_xyz(0.0, 0.0, 1.0),
+    ));
+    commands.spawn((
+        Mesh3d(meshes.add(Cuboid::default())),
+        MeshMaterial3d(material.clone()),
+        Transform::from_xyz(0.0, -1.0, 0.0),
+    ));
+    commands.spawn((
+        Mesh3d(meshes.add(Cuboid::default())),
+        MeshMaterial3d(material),
+        Transform::from_xyz(1.0, 0.0, 0.0),
+    ));
+    commands.spawn((
+        Mesh3d(meshes.add(Sphere::new(0.4).mesh().uv(32, 18))),
+        MeshMaterial3d(materials.add(StandardMaterial {
+            base_color: Color::srgb(0.4, 0.4, 0.4),
+            perceptual_roughness: 1.0,
+            reflectance: 0.0,
+            ..default()
+        })),
+        Transform::from_xyz(0.0, 0.0, 0.0),
+    ));
+    commands.spawn((
+        DirectionalLight {
+            shadow_maps_enabled: true,
+            ..default()
+        },
+        Transform::from_rotation(Quat::from_euler(
+            EulerRot::ZYX,
+            0.0,
+            -std::f32::consts::PI * 0.15,
+            -std::f32::consts::PI * 0.15,
+        )),
+    ));
+    commands.spawn((
+        Camera3d::default(),
+        render_target,
+        Hdr,
+        Tonemapping::Linear,
+        Msaa::Off,
+        DepthPrepass,
+        NormalPrepass,
+        ScreenSpaceAmbientOcclusion {
+            quality_level: ScreenSpaceAmbientOcclusionQualityLevel::High,
+            ..default()
+        },
+        Transform::from_xyz(-2.0, 2.0, -2.0).looking_at(Vec3::ZERO, Vec3::Y),
     ));
 }
 
@@ -446,7 +744,8 @@ fn print_header(adapter: &RenderAdapterInfo, config: &BenchConfig) {
     println!("# gpu_timing,{}", config.gpu_timing);
     println!("# gpu_timing_method,{}", dispatch_stats::GPU_TIMING_METHOD);
     println!(
-        "# bevy_settings,shadows+depth_prepass+normal_prepass+ssao+gpu_preprocess,msaa=off"
+        "# bevy_settings,{},msaa=off,gpu_preprocess",
+        config.workload
     );
     println!("# cli_passes,{}", config.cli_passes);
     println!(
