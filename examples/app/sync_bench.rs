@@ -357,6 +357,8 @@ fn extract_bench(mut commands: Commands, state: Extract<Res<BenchState>>) {
 
 fn reset_dispatch_stats() {
     dispatch_stats::reset();
+    #[cfg(feature = "blade")]
+    bevy::render::lifecycle_reset();
 }
 
 fn sample_dispatch_stats(
@@ -402,6 +404,20 @@ fn sample_dispatch_stats(
             stats.gpu_ns(),
             stats.gpu_pass_count,
         );
+        #[cfg(feature = "blade")]
+        {
+            let lc = bevy::render::take_encoder_lifecycle();
+            println!(
+                "# encoder_lifecycle,create_n={},alloc_n={},recycle_n={},cb_n={},create_ns={},vk_submit_ns={},destroy_ns={}",
+                lc.create_count,
+                lc.alloc_count,
+                lc.recycle_count,
+                lc.cb_count,
+                lc.create_ns,
+                lc.vk_submit_ns,
+                lc.destroy_ns,
+            );
+        }
     }
 }
 
